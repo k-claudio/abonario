@@ -3,6 +3,12 @@
 Dicionário da língua portuguesa para desktop (Windows), 100% offline, com abonações
 de escritores brasileiros e portugueses e lematização de qualquer forma flexionada.
 
+## Baixar
+
+A versão pronta para Windows 10/11 (64 bits) está em
+[Releases](https://github.com/k-claudio/abonario/releases): baixe o `Abonario-portatil.zip`,
+clique com o botão direito em **Extrair tudo** e abra o `Abonario.exe`. Não precisa instalar nada.
+
 ## Uso
 
 Abra **Abonário** pelo Menu Iniciar ou pela Área de Trabalho e digite uma palavra ou forma:

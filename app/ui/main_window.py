@@ -613,4 +613,6 @@ class MainWindow(QMainWindow):
             "<li><b>Lista de lematização do português</b>, Michal Měchura — ODbL.</li>"
             "<li><b>Projeto Gutenberg</b> — livros em domínio público.</li>"
             "<li><b>Wikisource em português</b> — textos em domínio público; transcrições CC BY-SA.</li></ul>"
-            "<p>O Aulete Digital não está incluído: é obra protegida e sem distribuição livre.</p>")
+            "<p>O Aulete Digital não está incluído: é obra protegida e sem distribuição livre.</p>"
+            "<p>O Abonário é software livre, sob a GNU GPL versão 3. Código-fonte: "
+            "https://github.com/k-claudio/abonario</p>")

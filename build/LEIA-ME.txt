@@ -24,6 +24,10 @@ O QUE ELE FAZ
   demais formas do mesmo verbete aparecem, com autor e obra.
 - Use * como coringa (*ção) ou escolha "Nas definições" para buscar dentro dos verbetes.
 
+CÓDIGO-FONTE
+O Abonário é software livre (GNU GPL versão 3). O código-fonte está em:
+https://github.com/k-claudio/abonario
+
 FONTES E LICENÇAS
 Dicionário Aberto (Cândido de Figueiredo, 1913) — CC BY-SA 2.5 PT;
 Wikcionário e Wiktionary (via kaikki.org) — CC BY-SA 4.0;
