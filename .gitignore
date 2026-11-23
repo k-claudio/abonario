@@ -1,0 +1,14 @@
+# Ambiente Python e caches
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Dados gerados e downloads (grandes demais para o GitHub; reconstruídos pelos scripts de build/)
+cache/
+data/
+*.db
+
+# Programa empacotado (publicado como Release, não no repositório)
+dist/
+Abonario-portatil.zip

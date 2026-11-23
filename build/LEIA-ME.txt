@@ -1,0 +1,36 @@
+ABONÁRIO — dicionário da língua portuguesa com abonações
+Funciona sem internet e sem instalação.
+
+COMO ABRIR
+1. Clique com o botão direito no arquivo .zip e escolha "Extrair tudo...".
+   (Não abra o programa de dentro do .zip: ele precisa dos arquivos extraídos.)
+2. Na pasta extraída, dê dois cliques em Abonario.exe.
+3. Se aparecer "O Windows protegeu o computador", clique em "Mais informações"
+   e depois em "Executar assim mesmo". O aviso aparece porque o programa não tem
+   assinatura digital comercial.
+
+Atalho na Área de Trabalho (opcional): botão direito em Abonario.exe >
+"Mostrar mais opções" > "Enviar para" > "Área de trabalho (criar atalho)".
+
+REQUISITOS
+Windows 10 ou 11 (64 bits) e cerca de 700 MB livres.
+Para remover, basta apagar a pasta.
+
+O QUE ELE FAZ
+- Pesquise qualquer palavra ou forma flexionada (fizéramos, coubesse, meninas,
+  dir-lhe-ia): o programa mostra o verbete-base com a análise gramatical.
+- Reconhece grafias antigas (pharmacia, elle) e palavras digitadas sem acento.
+- Mostra trechos de escritores brasileiros e portugueses em que a forma e as
+  demais formas do mesmo verbete aparecem, com autor e obra.
+- Use * como coringa (*ção) ou escolha "Nas definições" para buscar dentro dos verbetes.
+
+CÓDIGO-FONTE
+O Abonário é software livre (GNU GPL versão 3). O código-fonte está em:
+https://github.com/k-claudio/abonario
+
+FONTES E LICENÇAS
+Dicionário Aberto (Cândido de Figueiredo, 1913) — CC BY-SA 2.5 PT;
+Wikcionário e Wiktionary (via kaikki.org) — CC BY-SA 4.0;
+lista de lematização do português de Michal Měchura — ODbL;
+textos do Projeto Gutenberg e do Wikisource — domínio público.
+Detalhes no botão "Fontes e licenças" do programa.
