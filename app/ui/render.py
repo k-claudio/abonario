@@ -4,6 +4,7 @@ from __future__ import annotations
 import html
 from urllib.parse import quote
 
+from ..core.aulete import AuleteEntry
 from ..core.db import Database, Sentence
 from ..core.lookup import Lookup, LookupResult, Reading
 from ..core.morph_pt import PERSON_ROWS, verb_paradigm
@@ -59,7 +60,61 @@ def form_link(form: str, freq: dict[str, int], amb: dict[str, int] | None = None
     return f'<a href="{href("f", form)}"{cls}>{e(form)}</a>{mark}{num}'
 
 
-def entry_html(db: Database, lk: Lookup, res: LookupResult, lemma: str) -> tuple[str, list[str], dict[str, int]]:
+def aulete_section_html(entry: AuleteEntry | None, mode: str = "original", loading: bool = False) -> str:
+    """Bloco HTML da consulta primária ao Caldas Aulete (prioridade ao Verbete Original)."""
+    if loading:
+        return '<h2>Caldas Aulete <span class="src">(aulete.com.br)</span></h2>' \
+               '<p class="muted">Consultando aulete.com.br…</p>'
+    if entry is None:
+        return ""
+    if entry.error:
+        return (
+            '<h2>Caldas Aulete <span class="src">(aulete.com.br)</span></h2>'
+            f'<p class="muted">Não foi possível consultar o aulete.com.br ({e(entry.error)}). '
+            "Exibindo fontes locais.</p>"
+        )
+    if not entry.found:
+        near = (
+            f' Verbete mais próximo: <a href="{href("w", entry.nearest)}">{e(entry.nearest)}</a>.'
+            if entry.nearest else ""
+        )
+        return f'<p class="muted">Verbete não encontrado em aulete.com.br.{near}</p>'
+
+    show_updated = (mode == "updated" and entry.has_updated) or (not entry.has_original)
+    if not show_updated:
+        out = ['<h2>Caldas Aulete <span class="src">(aulete.com.br · Verbete Original)</span></h2>']
+        if entry.has_updated:
+            out.append(
+                '<p class="aulete-switch">Exibindo o Verbete Original · '
+                f'<a href="aulete:updated">ver {e(entry.updated_label)}</a></p>'
+            )
+        out.append(entry.original_html)
+        return "\n".join(out)
+
+    if entry.has_original:
+        out = [
+            f'<h2>Caldas Aulete <span class="src">(aulete.com.br · {e(entry.updated_label)})</span></h2>',
+            '<p class="aulete-switch">'
+            '<a href="aulete:original">voltar ao Verbete Original</a></p>',
+            entry.updated_html,
+        ]
+        return "\n".join(out)
+
+    return "\n".join([
+        f'<h2>Caldas Aulete <span class="src">(aulete.com.br · {e(entry.updated_label)} · sem Verbete Original)</span></h2>',
+        entry.updated_html,
+    ])
+
+
+def entry_html(
+    db: Database,
+    lk: Lookup,
+    res: LookupResult,
+    lemma: str,
+    aulete: AuleteEntry | None = None,
+    aulete_mode: str = "original",
+    aulete_loading: bool = False,
+) -> tuple[str, list[str], dict[str, int]]:
     """HTML do verbete; devolve também as formas do lema (para as abonações) e suas frequências."""
     out = [f"<h1>{e(lemma)}</h1>"]
     q = f"<b>{e(res.query)}</b>"
@@ -82,10 +137,14 @@ def entry_html(db: Database, lk: Lookup, res: LookupResult, lemma: str) -> tuple
         lab = "Também é forma de" if same else "Ver também"
         out.append(f'<p class="also">{lab}: ' + "; ".join(_reading_line(r) for r in res.also) + "</p>")
 
+    aulete_block = aulete_section_html(aulete, aulete_mode, aulete_loading)
+    if aulete_block:
+        out.append(aulete_block)
+
     entries = db.entries(lemma)
     da = [x for x in entries if x[1] == SRC_DA]
     wk = [x for x in entries if x[1] == SRC_WIKT]
-    if not entries:
+    if not entries and not aulete_loading and not (aulete and aulete.found):
         out.append('<p class="muted">Sem definição nas fontes do dicionário; '
                    "veja abaixo as formas e as abonações.</p>")
     if da:
@@ -144,14 +203,33 @@ def entry_html(db: Database, lk: Lookup, res: LookupResult, lemma: str) -> tuple
     return "\n".join(out), names, freq
 
 
-def not_found_html(res: LookupResult) -> str:
-    out = [f"<h1>{e(res.query)}</h1>"]
+def not_found_html(
+    res: LookupResult,
+    aulete: AuleteEntry | None = None,
+    aulete_mode: str = "original",
+    aulete_loading: bool = False,
+) -> str:
     if res.wildcard:
+        out = [f"<h1>{e(res.query)}</h1>"]
         out.append(f"<p>{len(res.wildcard)} verbetes para o padrão <b>{e(res.query)}</b>:</p><p>")
         out.append(" · ".join(f'<a href="{href("w", w)}">{e(w)}</a>' for w in res.wildcard))
         out.append("</p>")
         return "".join(out)
-    out.append('<p class="muted">Palavra não encontrada no dicionário nem no léxico de formas.</p>')
+    if aulete and aulete.found:
+        out = [
+            f"<h1>{e(aulete.headword or res.query)}</h1>",
+            aulete_section_html(aulete, aulete_mode, False),
+        ]
+        if res.suggestions:
+            out.append("<p>Verbetes locais próximos: " + " · ".join(
+                f'<a href="{href("w", w)}">{e(w)}</a>' for w in res.suggestions) + "</p>")
+        return "\n".join(out)
+    out = [f"<h1>{e(res.query)}</h1>"]
+    if aulete_loading:
+        out.append(aulete_section_html(None, loading=True))
+    elif aulete is not None:
+        out.append(aulete_section_html(aulete, aulete_mode, False))
+    out.append('<p class="muted">Palavra não encontrada no dicionário nem no léxico de formas locais.</p>')
     if res.suggestions:
         out.append("<p>Verbetes próximos: " + " · ".join(
             f'<a href="{href("w", w)}">{e(w)}</a>' for w in res.suggestions) + "</p>")

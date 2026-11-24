@@ -1,7 +1,9 @@
 # Abonário
 
-Dicionário da língua portuguesa para desktop (Windows), 100% offline, com abonações
-de escritores brasileiros e portugueses e lematização de qualquer forma flexionada.
+Dicionário da língua portuguesa para desktop (Windows) com busca primária no **Caldas Aulete**
+([aulete.com.br](https://aulete.com.br), priorizando o **Verbete Original**), além de base
+offline com abonações de escritores brasileiros e portugueses e lematização de qualquer forma
+flexionada.
 
 ## Baixar
 
@@ -21,9 +23,12 @@ Se o Windows mostrar "O Windows protegeu o computador", clique em **Mais informa
 Abra **Abonário** pelo Menu Iniciar ou pela Área de Trabalho e digite uma palavra ou forma:
 `fizéramos`, `coubesse`, `meninas`, `dir-lhe-ia`, `pharmacia`, `coracao`, `*ção`.
 
-- O verbete mostra a análise da forma (ex.: "1ª pessoa do plural do pretérito
-  mais-que-perfeito do indicativo de **fazer**"), as definições do Dicionário Aberto e do
-  Wikcionário, a conjugação e todas as formas encontradas nos textos.
+- O verbete realiza consulta primária online no **Caldas Aulete** (`aulete.com.br`), dando
+  prioridade ao **Verbete Original** (com alternância para o *Verbete Atualizado* / *Verbete Novo*
+  quando disponível e fallback para as fontes locais se estiver offline ou não encontrado).
+  Mostra ainda a análise da forma (ex.: "1ª pessoa do plural do pretérito mais-que-perfeito do
+  indicativo de **fazer**"), as definições do Dicionário Aberto e do Wikcionário, a conjugação
+  e todas as formas encontradas nos textos.
 - O painel de abonações tem duas abas: trechos com a forma pesquisada e trechos com
   todas as formas do lema. Filtros: Brasil/Portugal, autor, excluir formas ambíguas.
   "contexto" mostra as frases vizinhas; "copiar" copia o trecho com a referência.
@@ -54,6 +59,7 @@ Para liberar espaço depois de instalar, podem ser apagadas as pastas `cache\` (
 
 ## Estrutura
 
+- `app/core/aulete.py`: cliente HTTP com cache LRU, decodificador híbrido UTF-8/cp1252 e parser/sanitizador do `aulete.com.br` (prioridade ao Verbete Original).
 - `app/core/textnorm.py`: tokenização, pronomes átonos (fazê-lo, dir-lhe-ia, separal-os) e
   modernização da grafia antiga (mettido → metido, quasi → quase). É usado na construção do índice.
 - `app/core/lookup.py`: resolve a busca (forma → lema, grafia antiga, sem acento, coringas).
@@ -69,9 +75,8 @@ listadas abaixo.
 
 ## Fontes e licenças
 
+- Caldas Aulete Digital (`aulete.com.br`) — consultado online na hora da busca (não embutido no banco local)
 - Dicionário Aberto (Cândido de Figueiredo, 1913; ed. digital de Alberto Simões) — CC BY-SA 2.5 PT
 - Wikcionário (pt) e Wiktionary (en), extrações de kaikki.org — CC BY-SA 4.0
 - Lista de lematização do português, Michal Měchura — ODbL
 - Projeto Gutenberg e Wikisource em português — textos em domínio público
-
-O Aulete Digital não está incluído: é obra protegida, sem distribuição livre.
