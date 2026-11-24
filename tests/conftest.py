@@ -37,6 +37,27 @@ def database():
 
 
 @pytest.fixture(scope="session")
+def qapp():
+    """QApplication fora da tela; como no app, a coleta de lixo roda só na thread principal."""
+    import gc
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    gc.disable()
+    yield app
+    gc.collect()
+    gc.enable()
+
+
+@pytest.fixture
+def qt(qapp):
+    """Para testes com widgets: coleta o lixo na thread principal ao fim de cada teste."""
+    yield qapp
+    import gc
+    gc.collect()
+
+
+@pytest.fixture(scope="session")
 def lookup(database):
     from app.core.lookup import Lookup
     return Lookup(database)

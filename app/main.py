@@ -22,6 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--smoke", default="")
     ap.add_argument("--screenshot", default="")
     ap.add_argument("--theme", default="")
+    ap.add_argument("--layout", default="")
     args, qt_args = ap.parse_known_args(argv if argv is not None else sys.argv[1:])
 
     app = QApplication([sys.argv[0]] + qt_args)
@@ -44,6 +45,8 @@ def main(argv: list[str] | None = None) -> int:
         win.resize(1280, 860)
     if args.theme:
         win.apply_theme(args.theme, save=False)
+    if args.layout:
+        win.set_layout(args.layout, save=False)
     win.show()
 
     # O coletor de lixo do Python pode rodar numa thread de contagem e destruir ali objetos

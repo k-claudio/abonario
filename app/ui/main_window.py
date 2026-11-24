@@ -4,21 +4,23 @@ from __future__ import annotations
 from urllib.parse import unquote
 
 from PySide6.QtCore import (QAbstractListModel, QModelIndex, QObject, QRunnable, QSettings, Qt,
-                            QThreadPool, Signal)
+                            QThreadPool, QTimer, Signal)
 from PySide6.QtGui import (QAction, QActionGroup, QColor, QFont, QGuiApplication, QIcon, QKeySequence,
                            QPainter)
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
-                               QHBoxLayout, QLabel, QLineEdit, QListView, QMainWindow, QMessageBox,
+                               QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListView, QMainWindow, QMessageBox,
                                QPushButton, QSplitter, QStyle, QTabWidget, QTextBrowser, QToolBar, QToolButton, QMenu,
                                QVBoxLayout, QWidget)
 
 from ..core.aulete import AuleteClient, AuleteEntry
+from .. import __version__
 from ..core.db import Database, Sentence
 from ..core.lookup import Lookup, LookupResult, Reading
 from ..core.textnorm import WORD_RE, normalize_token
 from . import render, themes
 
 PAGE = 25
+LAYOUTS = {"abaixo": "Abonações embaixo", "lado": "Abonações ao lado"}
 
 
 def page_html(body: str) -> str:
@@ -248,11 +250,10 @@ class QuotesPanel(QWidget):
         self.author.setMaximumWidth(220)
         self.no_amb = QCheckBox("excluir formas ambíguas")
         self.no_amb.setToolTip("Na aba de todas as formas, ignora formas que também pertencem a outro lema")
-        top = QHBoxLayout()
-        top.addWidget(self.title, 1)
-        top.addWidget(self.no_amb)
-        top.addWidget(self.country)
-        top.addWidget(self.author)
+        self.header = QGridLayout()
+        self.header.setContentsMargins(0, 0, 0, 0)
+        self._compact: bool | None = None
+        self.set_compact(False)
         self.tabs = QTabWidget()
         self.exact = QuotesList(db, self)
         self.all = QuotesList(db, self)
@@ -262,7 +263,7 @@ class QuotesPanel(QWidget):
         self.all.counted.connect(self._labels)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(6, 4, 6, 4)
-        lay.addLayout(top)
+        lay.addLayout(self.header)
         lay.addWidget(self.tabs, 1)
         self.country.currentIndexChanged.connect(self.reload)
         self.author.editingFinished.connect(self.reload)
@@ -271,6 +272,33 @@ class QuotesPanel(QWidget):
         self.lemma = ""
         self.query = ""
         self.forms: list[str] = []
+
+    TITLE = "Abonações — trechos de escritores brasileiros e portugueses"
+
+    def set_compact(self, compact: bool) -> None:
+        """Cabeçalho numa linha (abonações embaixo) ou em duas (abonações ao lado, coluna estreita)."""
+        if compact == self._compact:
+            return
+        self._compact = compact
+        h = self.header
+        for w in (self.title, self.no_amb, self.country, self.author):
+            h.removeWidget(w)
+        for col in range(4):
+            h.setColumnStretch(col, 0)
+        if compact:
+            h.addWidget(self.title, 0, 0, 1, 4)
+            h.addWidget(self.no_amb, 1, 0)
+            h.addWidget(self.country, 1, 1)
+            h.addWidget(self.author, 1, 2)
+            h.setColumnStretch(3, 1)
+            self.title.setText("Abonações")
+        else:
+            h.addWidget(self.title, 0, 0)
+            h.addWidget(self.no_amb, 0, 1)
+            h.addWidget(self.country, 0, 2)
+            h.addWidget(self.author, 0, 3)
+            h.setColumnStretch(0, 1)
+            self.title.setText(self.TITLE)
 
     def filters(self) -> tuple[str, str]:
         return self.country.currentData() or "", self.author.text().strip()
@@ -320,7 +348,7 @@ class QuotesPanel(QWidget):
             self.tabs.setTabText(1, "Todas as formas")
         else:
             self.tabs.setTabText(1, f"Todas as formas de {self.lemma}{n(self.all)}" if self.lemma else "Todas as formas")
-        self.title.setText("Abonações — trechos de escritores brasileiros e portugueses")
+        self.title.setText("Abonações" if self._compact else self.TITLE)
 
     def zoom(self, step: int) -> None:
         for b in (self.exact.view, self.all.view):
@@ -412,6 +440,23 @@ class MainWindow(QMainWindow):
             self.theme_actions[key] = act
         self.theme_btn.setMenu(menu)
         tb.addWidget(self.theme_btn)
+        # disposição: abonações embaixo do verbete ou ao lado (escolha de cada usuário)
+        self.layout_btn = QToolButton()
+        self.layout_btn.setText("Disposição")
+        self.layout_btn.setToolTip("Abonações embaixo do verbete ou ao lado dele")
+        self.layout_btn.setPopupMode(QToolButton.InstantPopup)
+        lmenu = QMenu(self)
+        lgroup = QActionGroup(self)
+        lgroup.setExclusive(True)
+        self.layout_actions: dict[str, QAction] = {}
+        for key, label in LAYOUTS.items():
+            act = QAction(label, self, checkable=True)
+            act.triggered.connect(lambda _checked=False, k=key: self.set_layout(k))
+            lgroup.addAction(act)
+            lmenu.addAction(act)
+            self.layout_actions[key] = act
+        self.layout_btn.setMenu(lmenu)
+        tb.addWidget(self.layout_btn)
         a_about = QAction("Fontes e licenças", self)
         a_about.triggered.connect(self.about)
         tb.addAction(a_about)
@@ -429,12 +474,15 @@ class MainWindow(QMainWindow):
         self.entry = Browser()
         self.entry.link.connect(self.on_link)
         self.quotes = QuotesPanel(db)
-        right = QSplitter(Qt.Vertical)
+        right = QSplitter(Qt.Vertical)  # orientação trocada por set_layout()
         right.addWidget(self.entry)
         right.addWidget(self.quotes)
         right.setStretchFactor(0, 3)
         right.setStretchFactor(1, 2)
-        self.vsplit = right
+        right.setChildrenCollapsible(False)
+        self.split = right
+        self.layout_mode: str | None = None
+        self._split_states: dict[str, object] = {}
         main = QSplitter(Qt.Horizontal)
         main.addWidget(self.list)
         main.addWidget(right)
@@ -488,14 +536,43 @@ class MainWindow(QMainWindow):
         if save and self.persist:
             self.settings.setValue("theme", name)
 
+    # -- disposição -----------------------------------------------------------------
+    def set_layout(self, name: str, save: bool = True) -> None:
+        """'abaixo': abonações embaixo do verbete; 'lado': verbete | abonações, lado a lado."""
+        if name not in LAYOUTS:
+            name = "abaixo"
+        cur = self.layout_mode
+        if cur and cur != name:
+            self._split_states[cur] = self.split.saveState()
+        restored = False
+        state = self._split_states.get(name)
+        if state is not None and cur != name:
+            restored = self.split.restoreState(state)
+        self.split.setOrientation(Qt.Horizontal if name == "lado" else Qt.Vertical)
+        if not restored and cur != name:
+            sizes = [500, 500] if name == "lado" else [600, 400]
+            self.split.setSizes(sizes)
+            # reaplica depois que a janela calcular o tamanho real (proporção: meio a meio / 60-40)
+            QTimer.singleShot(0, lambda s=sizes, n=name: self.layout_mode == n and self.split.setSizes(s))
+        self.quotes.set_compact(name == "lado")
+        self.layout_actions[name].setChecked(True)
+        self.layout_mode = name
+        if save and self.persist:
+            self.settings.setValue("layout", name)
+
     # -- estado ------------------------------------------------------------------
     def _restore(self) -> None:
         g = self.settings.value("geometry")
         if g is not None:
             self.restoreGeometry(g)
-        v = self.settings.value("vsplit")
-        if v is not None:
-            self.vsplit.restoreState(v)
+        legacy = self.settings.value("vsplit")  # versões anteriores: só havia "abaixo"
+        for key in LAYOUTS:
+            v = self.settings.value(f"split_{key}")
+            if v is None and key == "abaixo":
+                v = legacy
+            if v is not None:
+                self._split_states[key] = v
+        self.set_layout(str(self.settings.value("layout", "abaixo")), save=False)
         z = int(self.settings.value("zoom", 0))
         if z:
             self.zoom(z)
@@ -505,7 +582,11 @@ class MainWindow(QMainWindow):
     def closeEvent(self, ev) -> None:  # noqa: N802
         if self.persist:
             self.settings.setValue("geometry", self.saveGeometry())
-            self.settings.setValue("vsplit", self.vsplit.saveState())
+            if self.layout_mode:
+                self._split_states[self.layout_mode] = self.split.saveState()
+                self.settings.setValue("layout", self.layout_mode)
+            for key, state in self._split_states.items():
+                self.settings.setValue(f"split_{key}", state)
             self.settings.setValue("zoom", self.zoom_level)
         super().closeEvent(ev)
 
@@ -737,6 +818,7 @@ class MainWindow(QMainWindow):
             "<h3>Abonário</h3><p>Consulta primária online ao <b>Dicionário Caldas Aulete</b> "
             "(aulete.com.br, priorizando o Verbete Original), com lematização, abonações e "
             "fallback de definições inteiramente offline. Fontes locais:</p><ul>"
+            f"<h3>Abonário {__version__}</h3><p>Funciona inteiramente offline. Fontes dos dados:</p><ul>"
             "<li><b>Dicionário Aberto</b> (Novo Diccionário da Língua Portuguesa, Cândido de Figueiredo, 1913; "
             "edição digital de Alberto Simões e colaboradores) — CC BY-SA 2.5 PT.</li>"
             "<li><b>Wikcionário</b> (pt.wiktionary.org), extração kaikki.org — CC BY-SA 4.0.</li>"

@@ -6,6 +6,7 @@ A pasta padrão é a instalação local (%LOCALAPPDATA%\\Programs\\Abonario), co
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -13,7 +14,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ISS = Path(__file__).resolve().parent / "abonario.iss"
 OUT = ROOT / "Instalar-Abonario.exe"
-APP_VERSION = "1.1"
+# versão única do programa: app/__init__.py (__version__)
+APP_VERSION = re.search(r'__version__\s*=\s*"([^"]+)"', (ROOT / "app" / "__init__.py").read_text(encoding="utf-8")).group(1)
 
 
 def find_iscc() -> Path:
