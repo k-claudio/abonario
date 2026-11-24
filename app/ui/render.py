@@ -159,12 +159,17 @@ def not_found_html(res: LookupResult) -> str:
     return "".join(out)
 
 
-def definitions_html(query: str, keys: list[str]) -> str:
+def definitions_html(query: str, keys: list[str], limit: int = 300) -> str:
     out = [f"<h1>“{e(query)}” nas definições</h1>"]
     if not keys:
         out.append('<p class="muted">Nenhum verbete contém esses termos.</p>')
     else:
-        out.append(f"<p>{len(keys)} verbetes:</p><p>")
+        if len(keys) > limit:
+            keys = keys[:limit]
+            out.append(f'<p class="muted">Mais de {limit} verbetes contêm esses termos; mostrando os {limit} '
+                       "primeiros em ordem alfabética. Acrescente palavras para refinar a busca.</p><p>")
+        else:
+            out.append(f"<p>{len(keys)} verbetes:</p><p>")
         out.append(" · ".join(f'<a href="{href("w", k)}">{e(k)}</a>' for k in keys))
         out.append("</p>")
     return "".join(out)

@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 
 from common import CACHE, DB_PATH, check_disk, log
 from mysqldump import iter_rows
-from app.core.textnorm import fold
+from app.core.textnorm import WORD_RE, fold
 
 OUT = DB_PATH
 SRC_DA, SRC_WIKT = 1, 2
@@ -216,6 +216,48 @@ def load_wikt() -> list[tuple]:
     return out
 
 
+def _normalizer():
+    """Normalizador do léxico (do banco principal ou da cópia de construção em cache/)."""
+    from build_lexicon import load_normalizer
+    for path in (DB_PATH, CACHE / "build_lexicon.db"):
+        if path.exists():
+            con = sqlite3.connect(path)
+            if con.execute("SELECT 1 FROM sqlite_master WHERE name='lexicon_known'").fetchone():
+                return load_normalizer(con)
+    raise SystemExit("Léxico não encontrado: rode build_lexicon.py antes.")
+
+
+_SIMPLE = re.compile(r"[^\W\d_]+")
+
+
+def index_text(plain: str, norm, heads: set[str], lemma_of) -> str:
+    """Texto indexado da definição: o original, as formas modernas das palavras em grafia antiga
+    (cavallo -> cavalo) e a forma-base das flexionadas que não são verbetes (cavallos -> cavalos ->
+    cavalo; rifando -> rifar), para a busca reversa achar todas."""
+    extra: list[str] = []
+    for w in WORD_RE.findall(plain):
+        terms = [t for t in norm.analyze(w) if _SIMPLE.fullmatch(t)]
+        extra.extend(terms[1:])
+        for t in terms:
+            if t not in heads:
+                extra.extend(lemma_of(t))
+    return plain + (" " + " ".join(dict.fromkeys(extra)) if extra else "")
+
+
+def _lemma_lookup(db: sqlite3.Connection):
+    memo: dict[str, tuple[str, ...]] = {}
+
+    def lemma_of(form: str) -> tuple[str, ...]:
+        r = memo.get(form)
+        if r is None:
+            r = tuple(l for (l,) in db.execute("SELECT DISTINCT lower(lemma) FROM forms WHERE form=?", (form,))
+                      if l != form and _SIMPLE.fullmatch(l))
+            memo[form] = r
+        return r
+
+    return lemma_of
+
+
 def build() -> None:
     check_disk()
     db = sqlite3.connect(OUT)
@@ -231,13 +273,19 @@ def build() -> None:
                                                    tokenize='unicode61 remove_diacritics 2');
         """
     )
+    norm = _normalizer()
+    log("normalizador carregado (grafia antiga -> moderna nas definições)")
+    lemma_of = _lemma_lookup(db)
+    sources = ((SRC_DA, load_da()), (SRC_WIKT, load_wikt()))
+    head_keys = {r[0] for _, rows in sources for r in rows}
     heads: dict[str, list] = {}
-    for src, rows in ((SRC_DA, load_da()), (SRC_WIKT, load_wikt())):
+    for src, rows in sources:
         rows.sort(key=lambda r: (r[0], r[2]))
         for key, lemma, hom, pos, body, plain in rows:
             cur = db.execute("INSERT INTO entries(key, lemma, source, homograph, pos, html) VALUES (?,?,?,?,?,?)",
                              (key, lemma, src, hom, pos, body))
-            db.execute("INSERT INTO entries_fts(rowid, body) VALUES (?,?)", (cur.lastrowid, plain))
+            db.execute("INSERT INTO entries_fts(rowid, body) VALUES (?,?)",
+                       (cur.lastrowid, index_text(plain, norm, head_keys, lemma_of)))
             h = heads.get(key)
             if h is None:
                 heads[key] = [lemma, src]

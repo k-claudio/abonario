@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import bisect
 import os
+import re
 import sqlite3
 import sys
 import threading
@@ -138,11 +139,28 @@ class Database:
             (key.lower(),)).fetchall()
 
     def search_definitions(self, query: str, limit: int = 300) -> list[str]:
-        q = " ".join(f'"{w}"' for w in query.replace('"', " ").split())
+        """Busca reversa: verbetes cujas definições contêm todas as palavras, em qualquer ordem.
+        A grafia antiga das definições (cavallo) já está indexada também na moderna (cavalo);
+        uma forma flexionada que não é verbete (cavalos) procura também a forma-base (cavalo)."""
+        groups = []
+        simple = re.compile(r"[^\W\d_]+")
+        for w in simple.findall(query.lower()):  # hífen/apóstrofo: palavras separadas
+            alts = [w]
+            alts += [m.lower() for m in self.alt_modern(w)]           # grafia antiga digitada
+            v = self.variant(w)
+            if v:
+                alts += v.split(" ")[1:]
+            if not self.is_headword(w):                                 # cavalos -> cavalo
+                alts += [l.lower() for l, _ in self.lemmas_of(w)]
+            alts = [a for a in dict.fromkeys(alts) if simple.fullmatch(a)]
+            groups.append("(" + " OR ".join(f'"{a}"' for a in alts) + ")")
+        if not groups:
+            return []
+        q = " AND ".join(groups)
         try:
             rows = self.conn.execute(
                 "SELECT DISTINCT e.key FROM entries_fts f JOIN entries e ON e.id = f.rowid "
-                "WHERE entries_fts MATCH ? LIMIT ?", (q, limit)).fetchall()
+                "WHERE entries_fts MATCH ? LIMIT ?", (q, limit + 1)).fetchall()  # +1: detecta o corte
         except sqlite3.OperationalError:
             return []
         return [r[0] for r in rows]
