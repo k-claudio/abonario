@@ -6,8 +6,15 @@ de escritores brasileiros e portugueses e lematização de qualquer forma flexio
 ## Baixar
 
 A versão pronta para Windows 10/11 (64 bits) está em
-[Releases](https://github.com/k-claudio/abonario/releases): baixe o `Abonario-portatil.zip`,
-clique com o botão direito em **Extrair tudo** e abra o `Abonario.exe`. Não precisa instalar nada.
+[Releases](https://github.com/k-claudio/abonario/releases), em duas formas:
+
+- **`Instalar-Abonario.exe`** (recomendado): abra e siga o assistente. Instala só para o seu usuário,
+  sem senha de administrador, cria os atalhos e pode ser desinstalado em *Configurações → Aplicativos*.
+- **`Abonario-portatil.zip`**: não instala nada. Clique com o botão direito em **Extrair tudo** e abra o
+  `Abonario.exe` **dentro da pasta extraída** (ele não funciona se for tirado da pasta).
+
+Se o Windows mostrar "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo**
+(o aviso aparece porque o programa não tem assinatura digital paga).
 
 ## Uso
 
@@ -36,6 +43,8 @@ cd ..
 .venv\Scripts\python -m pytest -q
 .venv\Scripts\pyinstaller --workpath cache\pyinstaller abonario.spec
 powershell -ExecutionPolicy Bypass -File build\install.ps1
+.venv\Scripts\python build\make_portable.py    # Abonario-portatil.zip
+.venv\Scripts\python build\make_installer.py   # Instalar-Abonario.exe (requer o Inno Setup 6 ou 7)
 ```
 
 O `install.ps1` **move** o banco (`data\abonario.db`) para a pasta instalada

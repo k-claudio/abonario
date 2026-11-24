@@ -1,4 +1,4 @@
-# Instala o Abonário para o usuário atual (sem privilégios de administrador).
+﻿# Instala o Abonário para o usuário atual (sem privilégios de administrador).
 # Move (não copia) o programa e o banco, para economizar disco, e cria atalhos.
 param(
     [string]$Dist = (Join-Path $PSScriptRoot "..\dist\Abonario"),
