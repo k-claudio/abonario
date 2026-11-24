@@ -3,7 +3,7 @@
 ; Parâmetros do compilador: /DSourceDir=<pasta com Abonario.exe, _internal e abonario.db>  /DAppVersion=x.y
 
 #ifndef AppVersion
-  #define AppVersion "1.1"
+  #define AppVersion "1.2"
 #endif
 #ifndef SourceDir
   #define SourceDir GetEnv("LOCALAPPDATA") + "\Programs\Abonario"

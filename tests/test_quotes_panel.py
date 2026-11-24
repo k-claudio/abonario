@@ -23,26 +23,7 @@ def test_bad_match_expression_does_not_raise(database):
     assert database.sentences(["macaco não"], 0, 5) == ([], 0)
 
 
-@pytest.fixture(scope="module")
-def qapp():
-    """Como no app: coleta de lixo só na thread principal (ver app/main.py)."""
-    import gc
-    from PySide6.QtWidgets import QApplication
-    app = QApplication.instance() or QApplication([])
-    gc.disable()
-    yield app
-    gc.collect()
-    gc.enable()
-
-
-@pytest.fixture(autouse=True)
-def _collect_in_main_thread():
-    yield
-    import gc
-    gc.collect()
-
-
-def test_expression_after_word_replaces_quotes(qapp, database):
+def test_expression_after_word_replaces_quotes(qt, database):
     """Bug relatado: buscar 'âmbar' e depois 'macaco não olha pro rabo' mantinha os trechos de âmbar."""
     from PySide6.QtCore import QThreadPool
     from app.ui.main_window import QuotesPanel
@@ -53,7 +34,7 @@ def test_expression_after_word_replaces_quotes(qapp, database):
     expr = "macaco não olha pro rabo"
     panel.set_queries(expr, expr, [expr], expr)
     QThreadPool.globalInstance().waitForDone()
-    qapp.processEvents()
+    qt.processEvents()
     for lst in (panel.exact, panel.all):
         assert all("mbar" not in s.text for s in lst.sents.values())
         assert "mbar" not in lst.view.toPlainText()
@@ -62,13 +43,13 @@ def test_expression_after_word_replaces_quotes(qapp, database):
     assert "-1" not in panel.tabs.tabText(0)
 
 
-def test_expression_with_quotes(qapp, database):
+def test_expression_with_quotes(qt, database):
     from PySide6.QtCore import QThreadPool
     from app.ui.main_window import QuotesPanel
     panel = QuotesPanel(database)
     panel.set_queries("de repente", "de repente", [], "de repente")
     QThreadPool.globalInstance().waitForDone()
-    qapp.processEvents()
+    qt.processEvents()
     assert panel.exact.sents
     assert (panel.exact.total or 0) >= len(panel.exact.sents)
     assert panel.tabs.tabText(0).startswith("Esta expressão: de repente")
