@@ -1,7 +1,10 @@
 """Temas visuais: claro, sépia e escuro."""
 from __future__ import annotations
 
-from PySide6.QtGui import QColor, QPalette
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QPalette
 
 # cores do conteúdo (verbetes e trechos); usadas para gerar o CSS do QTextBrowser
 _CSS_CLARO = dict(
@@ -41,6 +44,8 @@ THEMES: dict[str, dict] = {
 
 
 def palette(theme: dict) -> QPalette:
+    from PySide6.QtGui import QColor, QPalette
+
     c = {k: QColor(v) for k, v in theme["palette"].items()}
     p = QPalette()
     roles = {
@@ -90,4 +95,22 @@ a {{ color: {k['link']}; text-decoration: none; }}
 .qcit {{ color: {k['via']}; }}
 .qtext {{ color: {k['text']}; }}
 .muted {{ color: {k['muted']}; }}
+.aulete-switch {{ color: {k['via']}; background-color: {k['panel']}; padding: 4px 6px; margin-top: 4px; }}
+.aulete-sep {{ color: {k['rule']}; font-weight: bold; }}
+.textodeforiginal {{ color: {k['text']}; }}
+.aulete-orig {{ color: {k['text']}; }}
+.silabas {{ color: {k['pron']}; }}
+.separacao-silaba {{ color: {k['pron']}; }}
+.classificacao1 {{ color: {k['gram']}; font-weight: bold; margin-bottom: 4px; }}
+.numdef {{ color: {k['heading']}; font-weight: bold; }}
+.rub {{ color: {k['gram']}; font-weight: bold; }}
+.regio {{ color: {k['usg']}; font-style: italic; }}
+.uso {{ color: {k['usg']}; font-style: italic; }}
+.textodef {{ color: {k['text']}; }}
+.notaverb {{ color: {k['etym']}; }}
+.marginNoloc {{ margin-top: 8px; }}
+.noloc {{ color: {k['h3']}; font-weight: bold; }}
+.underline {{ text-decoration: underline; }}
+.abon {{ color: {k['cit']}; font-style: italic; }}
+.cochete {{ color: {k['via']}; }}
 """
