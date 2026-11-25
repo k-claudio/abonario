@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComb
                                QPushButton, QSplitter, QStyle, QTabWidget, QTextBrowser, QToolBar, QToolButton, QMenu,
                                QVBoxLayout, QWidget)
 
-from ..core.aulete import AuleteClient, AuleteEntry
+from ..core.aulete import AuleteClient, AuleteEntry, default_cache_path
 from .. import __version__
 from ..core.db import Database, Sentence
 from ..core.lookup import Lookup, LookupResult, Reading
@@ -81,21 +81,32 @@ class _CountTask(QRunnable):
 
 # -- consulta online ao Aulete ------------------------------------------------------------
 class _AuleteSignals(QObject):
-    done = Signal(int, object)
+    done = Signal(int, object, bool)
 
 
 class _AuleteTask(QRunnable):
-    def __init__(self, client: AuleteClient, candidates: list[str], token: int, signals: _AuleteSignals) -> None:
+    def __init__(
+        self,
+        client: AuleteClient,
+        candidates: list[str],
+        token: int,
+        signals: _AuleteSignals,
+        force_refresh: bool = False,
+    ) -> None:
         super().__init__()
-        self.client, self.candidates, self.token, self.signals = client, candidates, token, signals
+        self.client = client
+        self.candidates = candidates
+        self.token = token
+        self.signals = signals
+        self.force_refresh = force_refresh
 
     def run(self) -> None:
         try:
-            entry = self.client.lookup_candidates(self.candidates)
+            entry = self.client.lookup_candidates(self.candidates, force_refresh=self.force_refresh)
         except Exception as exc:  # noqa: BLE001
             entry = AuleteEntry(query=self.candidates[0] if self.candidates else "", error=str(exc))
         try:
-            self.signals.done.emit(self.token, entry)
+            self.signals.done.emit(self.token, entry, self.force_refresh)
         except RuntimeError:  # janela já fechada (programa encerrando)
             pass
 
@@ -366,7 +377,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.db = db
         self.lookup = Lookup(db)
-        self.aulete = aulete or AuleteClient()
+        self.aulete = aulete or AuleteClient(cache_path=default_cache_path(db.path))
         self._aulete_signals = _AuleteSignals()
         self._aulete_signals.done.connect(self._aulete_done)
         self._aulete_token = 0
@@ -491,8 +502,10 @@ class MainWindow(QMainWindow):
         self.hsplit = main
         self.setCentralWidget(main)
         s = db.stats
+        cached = self.aulete.cached_count()
+        cached_txt = f" ({render.fmt_n(cached)} salvos offline)" if cached else ""
         self.statusBar().showMessage(
-            f"Busca primária: aulete.com.br (Verbete Original) · base local: "
+            f"Busca primária: aulete.com.br (Verbete Original){cached_txt} · base local: "
             f"{render.fmt_n(s['verbetes'])} verbetes · {render.fmt_n(s['formas'])} formas · "
             f"{render.fmt_n(s['trechos'])} trechos de {render.fmt_n(s['obras'])} obras")
         self._restore()
@@ -588,6 +601,7 @@ class MainWindow(QMainWindow):
             for key, state in self._split_states.items():
                 self.settings.setValue(f"split_{key}", state)
             self.settings.setValue("zoom", self.zoom_level)
+        self.aulete.close()
         super().closeEvent(ev)
 
     def zoom(self, step: int) -> None:
@@ -597,6 +611,8 @@ class MainWindow(QMainWindow):
 
     def welcome(self) -> str:
         s = self.db.stats
+        cached = self.aulete.cached_count()
+        cached_txt = f" · {render.fmt_n(cached)} verbetes do Aulete salvos offline" if cached else ""
         return (
             "<h1>Abonário</h1>"
             "<p>Dicionário da língua portuguesa com consulta primária no Caldas Aulete "
@@ -607,6 +623,9 @@ class MainWindow(QMainWindow):
             "<a href='w:coubesse'>coubesse</a>, <a href='w:meninas'>meninas</a>, "
             "<a href='w:dir-lhe-ia'>dir-lhe-ia</a>. O programa encontra o verbete-base, consulta "
             "o <b>Verbete Original</b> no Aulete e exibe abaixo as fontes locais e abonações.</li>"
+            "<li><b>Acesso offline:</b> todo verbete encontrado no Aulete é salvo automaticamente no cache "
+            "local para abrir instantaneamente sem internet nas próximas consultas (use <i>atualizar</i> "
+            "para recarregar quando estiver online).</li>"
             "<li>Também reconhece grafias antigas: <a href='w:pharmacia'>pharmacia</a>, "
             "<a href='w:elle'>elle</a>, <a href='w:hontem'>hontem</a>; e palavras sem acento: "
             "<a href='w:coracao'>coracao</a>.</li>"
@@ -615,7 +634,7 @@ class MainWindow(QMainWindow):
             "<li>No painel de abonações, a primeira aba mostra os trechos com a forma pesquisada; a segunda, "
             "com todas as formas do lema. Clique numa forma da conjugação para ver só os trechos dela.</li></ul>"
             f"<p class='muted'>Base local: {render.fmt_n(s['verbetes'])} verbetes · {render.fmt_n(s['formas'])} formas · "
-            f"{render.fmt_n(s['trechos'])} trechos de {render.fmt_n(s['obras'])} obras.</p>"
+            f"{render.fmt_n(s['trechos'])} trechos de {render.fmt_n(s['obras'])} obras{cached_txt}.</p>"
         )
 
     # -- navegação --------------------------------------------------------------------
@@ -677,11 +696,30 @@ class MainWindow(QMainWindow):
         elif kind == "f":
             self.quotes.show_form(value)
         elif kind == "aulete":
-            self.set_aulete_mode(value)
+            if value == "refresh":
+                self.refresh_aulete()
+            else:
+                self.set_aulete_mode(value)
 
     def set_aulete_mode(self, mode: str) -> None:
         self._aulete_mode = "updated" if mode == "updated" else "original"
         self._rerender_entry(keep_scroll=False)
+
+    def refresh_aulete(self) -> None:
+        if self._cur_res is None:
+            return
+        candidates = self._aulete_candidates(self._cur_res, self._cur_lemma)
+        if not candidates:
+            return
+        self._aulete_token += 1
+        if self._aulete_entry and self._aulete_entry.found:
+            self.statusBar().showMessage("Atualizando verbete em aulete.com.br…", 4000)
+        else:
+            self._aulete_entry = None
+            self._rerender_entry(keep_scroll=True, aulete_loading=True)
+        QThreadPool.globalInstance().start(
+            _AuleteTask(self.aulete, candidates, self._aulete_token, self._aulete_signals, force_refresh=True)
+        )
 
     @staticmethod
     def _aulete_candidates(res: LookupResult, lemma: str | None) -> list[str]:
@@ -710,8 +748,11 @@ class MainWindow(QMainWindow):
         )
         return None, True
 
-    def _aulete_done(self, token: int, entry: AuleteEntry) -> None:
+    def _aulete_done(self, token: int, entry: AuleteEntry, is_refresh: bool = False) -> None:
         if token != self._aulete_token:
+            return
+        if is_refresh and entry.error and self._aulete_entry and self._aulete_entry.found:
+            self.statusBar().showMessage("Sem conexão para atualizar; exibindo cópia salva offline.", 5000)
             return
         self._aulete_entry = entry
         self._rerender_entry(keep_scroll=True)
@@ -720,8 +761,10 @@ class MainWindow(QMainWindow):
             self.setWindowTitle(f"{hw} — Abonário")
             if hw.lower() != self._cur_res.form:
                 self.quotes.set_queries(hw.lower(), hw, [hw.lower()], self._cur_res.query)
+        if is_refresh and entry.found:
+            self.statusBar().showMessage("Verbete atualizado a partir de aulete.com.br.", 4000)
 
-    def _rerender_entry(self, keep_scroll: bool = True) -> None:
+    def _rerender_entry(self, keep_scroll: bool = True, aulete_loading: bool = False) -> None:
         if self._cur_res is None:
             return
         bar = self.entry.verticalScrollBar()
@@ -729,12 +772,12 @@ class MainWindow(QMainWindow):
         if self._cur_lemma is not None:
             html, _, _ = render.entry_html(
                 self.db, self.lookup, self._cur_res, self._cur_lemma,
-                aulete=self._aulete_entry, aulete_mode=self._aulete_mode, aulete_loading=False,
+                aulete=self._aulete_entry, aulete_mode=self._aulete_mode, aulete_loading=aulete_loading,
             )
         else:
             html = render.not_found_html(
                 self._cur_res, aulete=self._aulete_entry,
-                aulete_mode=self._aulete_mode, aulete_loading=False,
+                aulete_mode=self._aulete_mode, aulete_loading=aulete_loading,
             )
         self.set_entry(html)
         bar.setValue(pos)
@@ -813,12 +856,16 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"“{query}” nas definições — Abonário")
 
     def about(self) -> None:
+        cached = self.aulete.cached_count()
+        cache_info = (
+            f" Cache offline atual: <b>{render.fmt_n(cached)}</b> verbete(s)"
+            + (f" em <code>{render.e(str(self.aulete.cache_path))}</code>." if self.aulete.cache_path else ".")
+        )
         QMessageBox.about(
             self, "Fontes e licenças",
-            "<h3>Abonário</h3><p>Consulta primária online ao <b>Dicionário Caldas Aulete</b> "
-            "(aulete.com.br, priorizando o Verbete Original), com lematização, abonações e "
-            "fallback de definições inteiramente offline. Fontes locais:</p><ul>"
-            f"<h3>Abonário {__version__}</h3><p>Funciona inteiramente offline. Fontes dos dados:</p><ul>"
+            f"<h3>Abonário {__version__}</h3><p>Consulta primária no <b>Dicionário Caldas Aulete</b> "
+            "(aulete.com.br, priorizando o Verbete Original) com cache local persistente, e "
+            "lematização, abonações e fallback de definições inteiramente offline. Fontes locais:</p><ul>"
             "<li><b>Dicionário Aberto</b> (Novo Diccionário da Língua Portuguesa, Cândido de Figueiredo, 1913; "
             "edição digital de Alberto Simões e colaboradores) — CC BY-SA 2.5 PT.</li>"
             "<li><b>Wikcionário</b> (pt.wiktionary.org), extração kaikki.org — CC BY-SA 4.0.</li>"
@@ -826,7 +873,7 @@ class MainWindow(QMainWindow):
             "<li><b>Lista de lematização do português</b>, Michal Měchura — ODbL.</li>"
             "<li><b>Projeto Gutenberg</b> — livros em domínio público.</li>"
             "<li><b>Wikisource em português</b> — textos em domínio público; transcrições CC BY-SA.</li></ul>"
-            "<p>Os verbetes do Caldas Aulete são consultados diretamente em aulete.com.br quando há conexão "
-            "e não são armazenados no banco local.</p>"
+            "<p>Os verbetes consultados no Caldas Aulete ficam salvos localmente no seu computador "
+            f"para acesso offline entre sessões.{cache_info}</p>"
             "<p>O Abonário é software livre, sob a GNU GPL versão 3. Código-fonte: "
             "https://github.com/k-claudio/abonario</p>")

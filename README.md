@@ -23,9 +23,13 @@ Se o Windows mostrar "O Windows protegeu o computador", clique em **Mais informa
 Abra **Abonário** pelo Menu Iniciar ou pela Área de Trabalho e digite uma palavra ou forma:
 `fizéramos`, `coubesse`, `meninas`, `dir-lhe-ia`, `pharmacia`, `coracao`, `*ção`.
 
-- O verbete realiza consulta primária online no **Caldas Aulete** (`aulete.com.br`), dando
+- O verbete realiza consulta primária no **Caldas Aulete** (`aulete.com.br`), dando
   prioridade ao **Verbete Original** (com alternância para o *Verbete Atualizado* / *Verbete Novo*
   quando disponível e fallback para as fontes locais se estiver offline ou não encontrado).
+  Cada verbete encontrado no Aulete é salvo automaticamente em cache local persistente
+  (`aulete_cache.db` em `%LOCALAPPDATA%\Abonario\`, ou ao lado de `abonario.db` no modo
+  portátil; sobrescrevível por `ABONARIO_AULETE_CACHE`), tornando-o acessível **100% offline**
+  nas próximas sessões — use o link **atualizar** para recarregar quando estiver online.
   Mostra ainda a análise da forma (ex.: "1ª pessoa do plural do pretérito mais-que-perfeito do
   indicativo de **fazer**"), as definições do Dicionário Aberto e do Wikcionário, a conjugação
   e todas as formas encontradas nos textos.
@@ -43,6 +47,7 @@ cd build
 ..\.venv\Scripts\python build_lexicon.py    # formas -> lemas, grafias antigas
 ..\.venv\Scripts\python build_corpus.py     # Wikisource + Gutenberg -> trechos e índice
 ..\.venv\Scripts\python build_dictionary.py # Dicionário Aberto + Wikcionário
+..\.venv\Scripts\python build_aulete.py     # pré-carrega aulete_cache.db (opcional e retomável)
 ..\.venv\Scripts\python finalize.py         # VACUUM e relatório
 cd ..
 .venv\Scripts\python -m pytest -q
@@ -52,20 +57,19 @@ powershell -ExecutionPolicy Bypass -File build\install.ps1
 .venv\Scripts\python build\make_installer.py   # Instalar-Abonario.exe (requer o Inno Setup 6 ou 7)
 ```
 
-O `install.ps1` **move** o banco (`data\abonario.db`) para a pasta instalada
-(`%LOCALAPPDATA%\Programs\Abonario`). Os testes encontram o banco lá automaticamente.
+O `build_aulete.py` é opcional e retomável (usa `--workers 6` e `--delay 0` por padrão com HTTP keep-alive e gravação em lote; aceita também `--dry-run`, `--limit N`, `--source both` e `--vacuum` para compactar no final). O `install.ps1` **move** `data\abonario.db` (e `data\aulete_cache.db`, se existir) para a pasta instalada (`%LOCALAPPDATA%\Programs\Abonario`), e `make_portable.py` / `make_installer.py` incluem o `aulete_cache.db` automaticamente quando ele está presente nessa pasta. Os testes encontram o banco lá automaticamente.
 Para liberar espaço depois de instalar, podem ser apagadas as pastas `cache\` (fontes baixadas,
 ~300 MB) e `.venv\`; elas só são necessárias para reconstruir os dados.
 
 ## Estrutura
 
-- `app/core/aulete.py`: cliente HTTP com cache LRU, decodificador híbrido UTF-8/cp1252 e parser/sanitizador do `aulete.com.br` (prioridade ao Verbete Original).
+- `app/core/aulete.py`: cliente HTTP com cache LRU e persistência em SQLite (`aulete_cache.db`), decodificador híbrido UTF-8/cp1252 e parser/sanitizador do `aulete.com.br` (prioridade ao Verbete Original).
 - `app/core/textnorm.py`: tokenização, pronomes átonos (fazê-lo, dir-lhe-ia, separal-os) e
   modernização da grafia antiga (mettido → metido, quasi → quase). É usado na construção do índice.
 - `app/core/lookup.py`: resolve a busca (forma → lema, grafia antiga, sem acento, coringas).
 - `app/core/db.py`: consultas somente leitura ao `abonario.db` (SQLite + FTS5).
 - `app/ui/`: interface Qt Widgets (sem navegador embutido).
-- `build/`: scripts de construção dos dados.
+- `build/`: scripts de construção dos dados (incluindo `build_aulete.py` para pré-carregar `aulete_cache.db`), instalação e empacotamento.
 
 ## Licença
 
@@ -75,7 +79,7 @@ listadas abaixo.
 
 ## Fontes e licenças
 
-- Caldas Aulete Digital (`aulete.com.br`) — consultado online na hora da busca (não embutido no banco local)
+- Caldas Aulete Digital (`aulete.com.br`) — consultado sob demanda e salvo em cache local persistente para acesso offline (não embutido na base distribuída)
 - Dicionário Aberto (Cândido de Figueiredo, 1913; ed. digital de Alberto Simões) — CC BY-SA 2.5 PT
 - Wikcionário (pt) e Wiktionary (en), extrações de kaikki.org — CC BY-SA 4.0
 - Lista de lematização do português, Michal Měchura — ODbL

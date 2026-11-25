@@ -70,8 +70,9 @@ def aulete_section_html(entry: AuleteEntry | None, mode: str = "original", loadi
     if entry.error:
         return (
             '<h2>Caldas Aulete <span class="src">(aulete.com.br)</span></h2>'
-            f'<p class="muted">Não foi possível consultar o aulete.com.br ({e(entry.error)}). '
-            "Exibindo fontes locais.</p>"
+            f'<p class="muted">Não foi possível consultar o aulete.com.br ({e(entry.error)}) '
+            "e este verbete ainda não está salvo offline. Exibindo fontes locais. "
+            '<a href="aulete:refresh">tentar novamente</a></p>'
         )
     if not entry.found:
         near = (
@@ -80,28 +81,37 @@ def aulete_section_html(entry: AuleteEntry | None, mode: str = "original", loadi
         )
         return f'<p class="muted">Verbete não encontrado em aulete.com.br.{near}</p>'
 
+    offline_tag = " · salvo offline" if entry.from_cache else ""
     show_updated = (mode == "updated" and entry.has_updated) or (not entry.has_original)
     if not show_updated:
-        out = ['<h2>Caldas Aulete <span class="src">(aulete.com.br · Verbete Original)</span></h2>']
+        out = [f'<h2>Caldas Aulete <span class="src">(aulete.com.br · Verbete Original{offline_tag})</span></h2>']
         if entry.has_updated:
             out.append(
                 '<p class="aulete-switch">Exibindo o Verbete Original · '
-                f'<a href="aulete:updated">ver {e(entry.updated_label)}</a></p>'
+                f'<a href="aulete:updated">ver {e(entry.updated_label)}</a> · '
+                '<a href="aulete:refresh">atualizar</a></p>'
+            )
+        else:
+            out.append(
+                '<p class="aulete-switch">Exibindo o Verbete Original · '
+                '<a href="aulete:refresh">atualizar</a></p>'
             )
         out.append(entry.original_html)
         return "\n".join(out)
 
     if entry.has_original:
         out = [
-            f'<h2>Caldas Aulete <span class="src">(aulete.com.br · {e(entry.updated_label)})</span></h2>',
+            f'<h2>Caldas Aulete <span class="src">(aulete.com.br · {e(entry.updated_label)}{offline_tag})</span></h2>',
             '<p class="aulete-switch">'
-            '<a href="aulete:original">voltar ao Verbete Original</a></p>',
+            '<a href="aulete:original">voltar ao Verbete Original</a> · '
+            '<a href="aulete:refresh">atualizar</a></p>',
             entry.updated_html,
         ]
         return "\n".join(out)
 
     return "\n".join([
-        f'<h2>Caldas Aulete <span class="src">(aulete.com.br · {e(entry.updated_label)} · sem Verbete Original)</span></h2>',
+        f'<h2>Caldas Aulete <span class="src">(aulete.com.br · {e(entry.updated_label)} · sem Verbete Original{offline_tag})</span></h2>',
+        '<p class="aulete-switch">Sem Verbete Original · <a href="aulete:refresh">atualizar</a></p>',
         entry.updated_html,
     ])
 

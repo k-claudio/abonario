@@ -1,6 +1,6 @@
-﻿; Instalador do Abonário (Inno Setup 6/7).
+; Instalador do Abonário (Inno Setup 6/7).
 ; Gere com:  python build\make_installer.py
-; Parâmetros do compilador: /DSourceDir=<pasta com Abonario.exe, _internal e abonario.db>  /DAppVersion=x.y
+; Parâmetros do compilador: /DSourceDir=<pasta com Abonario.exe, _internal, abonario.db e aulete_cache.db (opcional)>  /DAppVersion=x.y
 
 #ifndef AppVersion
   #define AppVersion "1.2"
@@ -48,13 +48,20 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [InstallDelete]
 ; remove as bibliotecas de uma versão anterior antes de copiar as novas
 Type: filesandordirs; Name: "{app}\_internal"
+Type: files; Name: "{app}\aulete_cache.db-wal"
+Type: files; Name: "{app}\aulete_cache.db-shm"
 
 [Files]
 Source: "{#SourceDir}\Abonario.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#SourceDir}\abonario.db"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\aulete_cache.db"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 Source: "LEIA-ME.txt"; DestDir: "{app}"; Flags: ignoreversion
+
+[UninstallDelete]
+Type: files; Name: "{app}\aulete_cache.db-wal"
+Type: files; Name: "{app}\aulete_cache.db-shm"
 
 [Icons]
 Name: "{autoprograms}\Abonário"; Filename: "{app}\Abonario.exe"; Comment: "Dicionário da língua portuguesa com abonações"; Check: WantShortcuts

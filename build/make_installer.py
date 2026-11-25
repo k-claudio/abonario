@@ -11,6 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from common import checkpoint_aulete_cache
+
 ROOT = Path(__file__).resolve().parent.parent
 ISS = Path(__file__).resolve().parent / "abonario.iss"
 OUT = ROOT / "Instalar-Abonario.exe"
@@ -35,6 +37,20 @@ def main() -> None:
     for need in ("Abonario.exe", "abonario.db", "_internal"):
         if not (src / need).exists():
             raise SystemExit(f"Falta {need} em {src}")
+    aulete_cache = src / "aulete_cache.db"
+    if aulete_cache.exists():
+        n_aulete = checkpoint_aulete_cache(aulete_cache)
+        print(
+            f"Incluindo aulete_cache.db ({aulete_cache.stat().st_size / 2**20:.1f} MB, "
+            f"{n_aulete:,} verbetes)".replace(",", "."),
+            flush=True,
+        )
+    else:
+        print(
+            "Aviso: aulete_cache.db ausente; o instalador será gerado sem cache pré-carregado "
+            "(opcional via build/build_aulete.py).",
+            flush=True,
+        )
     iscc = find_iscc()
     print(f"Compilando com {iscc.parent.name} a partir de {src} (pode levar alguns minutos)...", flush=True)
     res = subprocess.run([str(iscc), "/Q", f"/DSourceDir={src}", f"/DAppVersion={APP_VERSION}", str(ISS)],
