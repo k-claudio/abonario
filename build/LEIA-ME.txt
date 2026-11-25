@@ -17,6 +17,8 @@ Windows 10 ou 11 (64 bits) e cerca de 700 MB livres.
 Para remover, basta apagar a pasta.
 
 O QUE ELE FAZ
+- Consulta o Dicionário Caldas Aulete (aulete.com.br, priorizando o Verbete Original)
+  com cache local persistente (aulete_cache.db) para acesso offline.
 - Pesquise qualquer palavra ou forma flexionada (fizéramos, coubesse, meninas,
   dir-lhe-ia): o programa mostra o verbete-base com a análise gramatical.
 - Reconhece grafias antigas (pharmacia, elle) e palavras digitadas sem acento.
@@ -29,6 +31,7 @@ O Abonário é software livre (GNU GPL versão 3). O código-fonte está em:
 https://github.com/k-claudio/abonario
 
 FONTES E LICENÇAS
+Caldas Aulete Digital (aulete.com.br) — consultado sob demanda e salvo em cache local (aulete_cache.db);
 Dicionário Aberto (Cândido de Figueiredo, 1913) — CC BY-SA 2.5 PT;
 Wikcionário e Wiktionary (via kaikki.org) — CC BY-SA 4.0;
 lista de lematização do português de Michal Měchura — ODbL;

@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Empacotamento do Abonário (PyInstaller, pasta única). O banco abonario.db é instalado à parte.
+# Empacotamento do Abonário (PyInstaller, pasta única). Os bancos abonario.db e aulete_cache.db (opcional) são instalados à parte.
 
 a = Analysis(
     ["run_abonario.py"],

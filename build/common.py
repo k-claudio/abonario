@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sqlite3
 import sys
 import subprocess
 import time
@@ -12,6 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / "cache"
 DATA = ROOT / "data"
 DB_PATH = DATA / "abonario.db"
+AULETE_CACHE_PATH = DATA / "aulete_cache.db"
 
 sys.path.insert(0, str(ROOT))  # permite "from app.core import ..."
 
@@ -69,3 +71,24 @@ def fetch_bytes(url: str, retries: int = 4, timeout: int = 60) -> bytes | None:
             log(f"  falha em {url} ({attempt}/{retries}): curl {res.returncode}")
         time.sleep(min(20, 2 ** attempt))
     return None
+
+
+def checkpoint_aulete_cache(path: Path, vacuum: bool = False) -> int:
+    """Consolida o WAL de aulete_cache.db em arquivo único e devolve o nº de verbetes."""
+    con = sqlite3.connect(path, timeout=5.0)
+    try:
+        con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        if vacuum:
+            con.execute("ANALYZE")
+            con.execute("VACUUM")
+        con.execute("PRAGMA journal_mode=DELETE")
+        con.commit()
+        try:
+            row = con.execute(
+                "SELECT count(DISTINCT lower(headword)) FROM aulete_entries WHERE headword != ''"
+            ).fetchone()
+            return int(row[0]) if row else 0
+        except sqlite3.Error:
+            return 0
+    finally:
+        con.close()

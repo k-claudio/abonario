@@ -2,14 +2,18 @@
 from __future__ import annotations
 
 import html
+import os
 import re
+import sqlite3
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from collections import OrderedDict
 from dataclasses import dataclass
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Callable
 
 from .textnorm import fold
@@ -18,6 +22,7 @@ BASE_URL = "https://aulete.com.br/"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Abonario/1.0"
 DEFAULT_TIMEOUT = 10.0
 CACHE_MAX = 512
+CACHE_DB_NAME = "aulete_cache.db"
 
 ALLOWED_TAGS = frozenset({
     "p", "br", "strong", "b", "em", "i", "u", "sup", "sub", "span", "h3", "ol", "ul", "li",
@@ -65,6 +70,8 @@ class AuleteEntry:
     updated_label: str = "Verbete Atualizado"
     nearest: str = ""
     error: str = ""
+    from_cache: bool = False
+    fetched_at: int = 0
 
     @property
     def has_original(self) -> bool:
@@ -307,19 +314,163 @@ def _default_fetch(url: str, timeout: float) -> bytes:
         return resp.read()
 
 
+def default_cache_path(db_path: Path | None = None) -> Path | None:
+    """Resolve o caminho do cache SQLite persistente para verbetes do Caldas Aulete."""
+    if "ABONARIO_AULETE_CACHE" in os.environ:
+        val = os.environ["ABONARIO_AULETE_CACHE"].strip()
+        return Path(val) if val else None
+    if db_path is not None:
+        portable = Path(db_path).resolve().parent / CACHE_DB_NAME
+        if portable.exists():
+            return portable
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        return Path(local) / "Abonario" / CACHE_DB_NAME
+    return Path.home() / ".cache" / "abonario" / CACHE_DB_NAME
+
+
+class AuleteCache:
+    """Cache SQLite persistente para verbetes já consultados do Caldas Aulete."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+        self._conn: sqlite3.Connection | None = sqlite3.connect(
+            self.path, check_same_thread=False, timeout=5.0
+        )
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS aulete_entries (
+                key TEXT PRIMARY KEY,
+                headword TEXT NOT NULL,
+                url TEXT NOT NULL,
+                original_html TEXT NOT NULL,
+                updated_html TEXT NOT NULL,
+                updated_label TEXT NOT NULL,
+                nearest TEXT NOT NULL,
+                fetched_at INTEGER NOT NULL
+            ) WITHOUT ROWID
+            """
+        )
+        self._conn.commit()
+
+    def get(self, key: str) -> AuleteEntry | None:
+        with self._lock:
+            if self._conn is None:
+                return None
+            try:
+                row = self._conn.execute(
+                    "SELECT headword, url, original_html, updated_html, updated_label, nearest, fetched_at "
+                    "FROM aulete_entries WHERE key=?",
+                    (key,),
+                ).fetchone()
+            except sqlite3.Error:
+                return None
+        if not row:
+            return None
+        return AuleteEntry(
+            query=key,
+            headword=row[0],
+            url=row[1],
+            original_html=row[2],
+            updated_html=row[3],
+            updated_label=row[4],
+            nearest=row[5],
+            from_cache=True,
+            fetched_at=row[6],
+        )
+
+    def put(self, key: str, entry: AuleteEntry) -> None:
+        with self._lock:
+            if self._conn is None:
+                return
+            try:
+                self._conn.execute(
+                    "INSERT OR REPLACE INTO aulete_entries "
+                    "(key, headword, url, original_html, updated_html, updated_label, nearest, fetched_at) "
+                    "VALUES (?,?,?,?,?,?,?,?)",
+                    (
+                        key,
+                        entry.headword,
+                        entry.url,
+                        entry.original_html,
+                        entry.updated_html,
+                        entry.updated_label,
+                        entry.nearest,
+                        entry.fetched_at,
+                    ),
+                )
+                self._conn.commit()
+            except sqlite3.Error:
+                pass
+
+    def delete(self, key: str) -> None:
+        with self._lock:
+            if self._conn is None:
+                return
+            try:
+                self._conn.execute("DELETE FROM aulete_entries WHERE key=?", (key,))
+                self._conn.commit()
+            except sqlite3.Error:
+                pass
+
+    def clear(self) -> int:
+        with self._lock:
+            if self._conn is None:
+                return 0
+            try:
+                cur = self._conn.execute("DELETE FROM aulete_entries")
+                self._conn.commit()
+                return cur.rowcount if cur.rowcount >= 0 else 0
+            except sqlite3.Error:
+                return 0
+
+    def count(self) -> int:
+        with self._lock:
+            if self._conn is None:
+                return 0
+            try:
+                row = self._conn.execute(
+                    "SELECT count(DISTINCT lower(headword)) FROM aulete_entries WHERE headword != ''"
+                ).fetchone()
+                return row[0] if row else 0
+            except sqlite3.Error:
+                return 0
+
+    def close(self) -> None:
+        with self._lock:
+            if self._conn is not None:
+                try:
+                    self._conn.close()
+                except sqlite3.Error:
+                    pass
+                self._conn = None
+
+
 class AuleteClient:
-    """Cliente HTTP síncrono com cache LRU thread-safe para aulete.com.br."""
+    """Cliente HTTP com cache LRU em memória e persistência opcional em SQLite para aulete.com.br."""
 
     def __init__(
         self,
         fetcher: Callable[[str], bytes] | None = None,
         timeout: float = DEFAULT_TIMEOUT,
         cache_max: int = CACHE_MAX,
+        cache_path: Path | str | None = None,
     ) -> None:
         self._fetcher = fetcher or (lambda url: _default_fetch(url, timeout))
         self._cache_max = max(1, cache_max)
         self._lock = threading.Lock()
         self._cache: OrderedDict[str, AuleteEntry] = OrderedDict()
+        self.cache_path: Path | None = Path(cache_path) if cache_path is not None else None
+        self._disk: AuleteCache | None = None
+        if self.cache_path is not None:
+            try:
+                self._disk = AuleteCache(self.cache_path)
+            except (sqlite3.Error, OSError):
+                self._disk = None
 
     def get_cached(self, term: str) -> AuleteEntry | None:
         key = term.strip().lower()
@@ -329,7 +480,13 @@ class AuleteClient:
             entry = self._cache.get(key)
             if entry is not None:
                 self._cache.move_to_end(key)
-            return entry
+                return entry
+        if self._disk is not None:
+            entry = self._disk.get(key)
+            if entry is not None:
+                self._put_cache(key, entry)
+                return entry
+        return None
 
     def _put_cache(self, key: str, entry: AuleteEntry) -> None:
         with self._lock:
@@ -338,20 +495,32 @@ class AuleteClient:
             while len(self._cache) > self._cache_max:
                 self._cache.popitem(last=False)
 
-    def lookup(self, term: str) -> AuleteEntry:
+    def lookup(self, term: str, force_refresh: bool = False) -> AuleteEntry:
         q = term.strip()
         if not q:
             return AuleteEntry(query="")
-        cached = self.get_cached(q)
-        if cached is not None:
-            return cached
+        if not force_refresh:
+            cached = self.get_cached(q)
+            if cached is not None:
+                return cached
         url = _entry_url(q)
         try:
             raw = self._fetcher(url)
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             return AuleteEntry(query=q, url=url, error=str(exc))
         entry = parse_aulete_page(q, raw, url=url)
-        self._put_cache(q.lower(), entry)
+        entry.fetched_at = int(time.time())
+        entry.from_cache = False
+        key = q.lower()
+        self._put_cache(key, entry)
+        if entry.found:
+            if self._disk is not None:
+                self._disk.put(key, entry)
+            hw_key = entry.headword.strip().lower()
+            if hw_key and hw_key != key:
+                self._put_cache(hw_key, entry)
+                if self._disk is not None:
+                    self._disk.put(hw_key, entry)
         return entry
 
     def get_cached_candidates(self, terms: list[str]) -> AuleteEntry | None:
@@ -368,15 +537,39 @@ class AuleteClient:
             entries.append(e)
         return entries[0] if entries else None
 
-    def lookup_candidates(self, terms: list[str]) -> AuleteEntry:
+    def lookup_candidates(self, terms: list[str], force_refresh: bool = False) -> AuleteEntry:
         clean = [t.strip() for t in dict.fromkeys(terms) if t and t.strip()]
         if not clean:
             return AuleteEntry(query="")
         first_miss: AuleteEntry | None = None
-        for t in clean:
-            entry = self.lookup(t)
-            if entry.found or entry.error:
+        for idx, t in enumerate(clean):
+            entry = self.lookup(t, force_refresh=force_refresh)
+            if entry.found:
+                return entry
+            if entry.error:
+                if not force_refresh:
+                    for other in clean[idx + 1 :]:
+                        cached = self.get_cached(other)
+                        if cached is not None and cached.found:
+                            return cached
                 return entry
             if first_miss is None or (entry.nearest and not first_miss.nearest):
                 first_miss = entry
         return first_miss or AuleteEntry(query=clean[0], url=_entry_url(clean[0]))
+
+    def cached_count(self) -> int:
+        if self._disk is not None:
+            return self._disk.count()
+        with self._lock:
+            return len({e.headword.lower() for e in self._cache.values() if e.found and e.headword})
+
+    def clear_cache(self) -> int:
+        with self._lock:
+            self._cache.clear()
+        if self._disk is not None:
+            return self._disk.clear()
+        return 0
+
+    def close(self) -> None:
+        if self._disk is not None:
+            self._disk.close()

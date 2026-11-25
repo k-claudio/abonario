@@ -9,6 +9,8 @@ import sys
 import zipfile
 from pathlib import Path
 
+from common import checkpoint_aulete_cache
+
 ROOT = Path(__file__).resolve().parent.parent
 SRC = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(os.environ["LOCALAPPDATA"]) / "Programs" / "Abonario"
 OUT = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / "Abonario-portatil.zip"
@@ -18,8 +20,24 @@ README = Path(__file__).resolve().parent / "LEIA-ME.txt"
 def main() -> None:
     if not (SRC / "Abonario.exe").exists() or not (SRC / "abonario.db").exists():
         raise SystemExit(f"Programa instalado não encontrado em {SRC}")
+    aulete_cache = SRC / "aulete_cache.db"
+    if aulete_cache.exists():
+        n_aulete = checkpoint_aulete_cache(aulete_cache)
+        print(
+            f"Incluindo aulete_cache.db ({aulete_cache.stat().st_size / 2**20:.1f} MB, "
+            f"{n_aulete:,} verbetes)".replace(",", "."),
+            flush=True,
+        )
+    else:
+        print(
+            "Aviso: aulete_cache.db ausente (opcional; gere antes com build/build_aulete.py).",
+            flush=True,
+        )
     tmp = OUT.with_suffix(".part")
-    files = sorted(p for p in SRC.rglob("*") if p.is_file())
+    files = sorted(
+        p for p in SRC.rglob("*")
+        if p.is_file() and not p.name.endswith(("-wal", "-shm", "-journal"))
+    )
     with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         z.write(README, "Abonario/LEIA-ME.txt")
         for i, p in enumerate(files, 1):

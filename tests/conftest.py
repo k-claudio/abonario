@@ -8,6 +8,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "build"))
+os.environ.setdefault("ABONARIO_AULETE_CACHE", "")
 
 # banco: variável ABONARIO_DB, pasta data/ do projeto ou a instalação do usuário
 _candidates = [os.environ.get("ABONARIO_DB"), ROOT / "data" / "abonario.db",

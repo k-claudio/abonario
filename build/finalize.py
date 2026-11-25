@@ -4,7 +4,7 @@ from __future__ import annotations
 import sqlite3
 import time
 
-from common import CACHE, DB_PATH, check_disk, log
+from common import AULETE_CACHE_PATH, CACHE, DB_PATH, check_disk, checkpoint_aulete_cache, log
 from app.core.db import Database
 from app.core.lookup import Lookup
 
@@ -16,6 +16,21 @@ def report() -> None:
     lk = Lookup(db)
     c = db.conn
     log(f"tamanho do banco: {DB_PATH.stat().st_size / 2**20:.0f} MB")
+    if AULETE_CACHE_PATH.exists():
+        aulete_con = sqlite3.connect(AULETE_CACHE_PATH)
+        try:
+            row = aulete_con.execute(
+                "SELECT count(DISTINCT lower(headword)) FROM aulete_entries WHERE headword != ''"
+            ).fetchone()
+            n_aulete = int(row[0]) if row else 0
+        except sqlite3.Error:
+            n_aulete = 0
+        finally:
+            aulete_con.close()
+        log(
+            f"aulete_cache.db: {AULETE_CACHE_PATH.stat().st_size / 2**20:.1f} MB "
+            f"({n_aulete:,} verbetes)".replace(",", ".")
+        )
     for k, v in db.stats.items():
         log(f"  {k}: {v:,}".replace(",", "."))
     for country, n, s in c.execute(
@@ -57,6 +72,9 @@ def finalize() -> None:
     log("VACUUM...")
     db.execute("VACUUM")
     db.close()
+    if AULETE_CACHE_PATH.exists():
+        log("Compactando aulete_cache.db...")
+        checkpoint_aulete_cache(AULETE_CACHE_PATH, vacuum=True)
     report()
 
 

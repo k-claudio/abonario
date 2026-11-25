@@ -13,6 +13,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+from .core.aulete import AuleteClient
 from .core.db import Database, find_db
 from .ui.main_window import MainWindow
 
@@ -39,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
                              "Ele deve ficar na mesma pasta do programa.")
         return 1
     db = Database(path)
-    win = MainWindow(db)
+    win = MainWindow(db, aulete=AuleteClient(cache_path=None) if args.smoke else None)
     if args.smoke:
         win.persist = False
         win.resize(1280, 860)
